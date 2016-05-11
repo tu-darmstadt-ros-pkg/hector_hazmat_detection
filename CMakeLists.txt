@@ -5,12 +5,15 @@ project(hector_hazmat_detection)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
-  cv_bridge
-  hector_worldmodel_msgs
-  nodelet
-  opencv2
   roscpp
+  image_transport
+  tf
+  cv_bridge
+  nodelet
+  hector_worldmodel_msgs
 )
+
+find_package(OpenCV)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -102,9 +105,9 @@ find_package(catkin REQUIRED COMPONENTS
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-#  INCLUDE_DIRS include
+   INCLUDE_DIRS include
 #  LIBRARIES hector_hazmat_detection
-#  CATKIN_DEPENDS cv_bridge hector_worldmodel_msgs nodelet opencv2 roscpp
+   CATKIN_DEPENDS cv_bridge hector_worldmodel_msgs nodelet roscpp
 #  DEPENDS system_lib
 )
 
@@ -117,29 +120,37 @@ catkin_package(
 # include_directories(include)
 include_directories(
   ${catkin_INCLUDE_DIRS}
+  include
 )
 
-## Declare a C++ library
-# add_library(hector_hazmat_detection
-#   src/${PROJECT_NAME}/hector_hazmat_detection.cpp
-# )
+add_library(hector_hazmat_detection
+   src/hazmat_detection.cpp
+)
 
-## Add cmake target dependencies of the library
-## as an example, code may need to be generated before libraries
-## either from message generation or dynamic reconfigure
-# add_dependencies(hector_hazmat_detection ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(hector_hazmat_detection
+  ${catkin_LIBRARIES}
+)
+
+add_dependencies(hector_hazmat_detection ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+
+add_library(hector_hazmat_detection_nodelet
+   src/nodelet.cpp
+)
+
+add_dependencies(hector_hazmat_detection_nodelet hector_hazmat_detection)
+
 
 ## Declare a C++ executable
-# add_executable(hector_hazmat_detection_node src/hector_hazmat_detection_node.cpp)
+add_executable(hector_hazmat_detection_node src/node.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
 # add_dependencies(hector_hazmat_detection_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
-# target_link_libraries(hector_hazmat_detection_node
-#   ${catkin_LIBRARIES}
-# )
+target_link_libraries(hector_hazmat_detection_node
+  hector_hazmat_detection
+)
 
 #############
 ## Install ##
