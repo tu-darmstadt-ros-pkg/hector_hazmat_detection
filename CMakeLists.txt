@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(hector_hazmat_detection)
 
+#set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR}/cmake)
+
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
@@ -13,7 +15,9 @@ find_package(catkin REQUIRED COMPONENTS
   hector_worldmodel_msgs
 )
 
-find_package(OpenCV)
+find_package( OpenCV REQUIRED )
+
+#find_package( LibSVM REQUIRED )
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -150,6 +154,19 @@ add_executable(hector_hazmat_detection_node src/node.cpp)
 ## Specify libraries to link a library or executable target against
 target_link_libraries(hector_hazmat_detection_node
   hector_hazmat_detection
+)
+
+add_executable(hog_descriptor_setup src/hog_descriptor_setup.cpp src/LinearSVM.cpp)
+
+target_link_libraries(hog_descriptor_setup
+  ${catkin_LIBRARIES}
+)
+
+
+add_executable(hog_descriptor_test src/hog_descriptor_test.cpp src/LinearSVM.cpp)
+
+target_link_libraries(hog_descriptor_test
+  ${catkin_LIBRARIES}
 )
 
 #############
