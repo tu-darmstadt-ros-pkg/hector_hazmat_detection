@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(hector_hazmat_detection)
 
+add_definitions(-std=c++0x)
+
 #set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR}/cmake)
 
 ## Find catkin macros and libraries
@@ -13,9 +15,13 @@ find_package(catkin REQUIRED COMPONENTS
   cv_bridge
   nodelet
   hector_worldmodel_msgs
+  hector_tpofinder
+  cv_debug_provider
 )
 
 find_package( OpenCV REQUIRED )
+
+#add_subdirectory(tpofinder)
 
 #find_package( LibSVM REQUIRED )
 
@@ -111,7 +117,7 @@ find_package( OpenCV REQUIRED )
 catkin_package(
    INCLUDE_DIRS include
 #  LIBRARIES hector_hazmat_detection
-   CATKIN_DEPENDS cv_bridge hector_worldmodel_msgs nodelet roscpp
+   CATKIN_DEPENDS cv_bridge hector_worldmodel_msgs nodelet roscpp hector_tpofinder
 #  DEPENDS system_lib
 )
 
@@ -156,18 +162,25 @@ target_link_libraries(hector_hazmat_detection_node
   hector_hazmat_detection
 )
 
-add_executable(hog_descriptor_setup src/hog_descriptor_setup.cpp src/LinearSVM.cpp)
+#add_executable(hog_descriptor_setup src/hog_descriptor_setup.cpp src/LinearSVM.cpp)
 
-target_link_libraries(hog_descriptor_setup
-  ${catkin_LIBRARIES}
-)
+#target_link_libraries(hog_descriptor_setup
+#  ${catkin_LIBRARIES}
+#)
 
 
-add_executable(hog_descriptor_test src/hog_descriptor_test.cpp src/LinearSVM.cpp)
+#add_executable(hog_descriptor_test src/hog_descriptor_test.cpp src/LinearSVM.cpp)
 
-target_link_libraries(hog_descriptor_test
-  ${catkin_LIBRARIES}
-)
+#target_link_libraries(hog_descriptor_test
+#  ${catkin_LIBRARIES}
+#)
+
+
+#add_executable(tpofinder_test src/tpofinder_test.cpp)
+
+#target_link_libraries(tpofinder_test
+#  ${catkin_LIBRARIES}
+#)
 
 #############
 ## Install ##

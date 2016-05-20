@@ -33,6 +33,22 @@
 #include <image_transport/image_transport.h>
 #include <tf/transform_listener.h>
 
+//TODO sort out stuff
+#include <boost/foreach.hpp>
+#include <boost/format.hpp>
+#include <iostream>
+#include <opencv2/highgui/highgui.hpp>
+
+//#include <hector_tpofinder/configure.h>
+#include <tpofinder/detect.h>
+#include <tpofinder/provide.h>
+#include <tpofinder/visualize.h>
+#include <cv_debug_provider/cv_debug_provider.h>
+
+using namespace cv;
+using namespace tpofinder;
+using namespace std;
+
 namespace hector_hazmat_detection {
 
 class hazmat_detection_impl {
@@ -42,6 +58,7 @@ public:
 
 protected:
   void imageCallback(const sensor_msgs::ImageConstPtr& image, const sensor_msgs::CameraInfoConstPtr& camera_info);
+  void loadModel(Modelbase& modelbase, const string& path);
 
 private:
   ros::NodeHandle nh_;
@@ -56,6 +73,10 @@ private:
   std::string rotation_source_frame_id_;
   std::string rotation_target_frame_id_;
   int rotation_image_size_;
+
+  Ptr<Detector> detector;
+  CvDebugProvider debug_provider_;
+
 };
 
 } // namespace hector_hazmat_detection
