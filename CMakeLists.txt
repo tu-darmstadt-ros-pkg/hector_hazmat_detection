@@ -162,6 +162,12 @@ target_link_libraries(hector_hazmat_detection_node
   hector_hazmat_detection
 )
 
+add_executable(tpofinder_data_setup src/tpofinder_data_setup.cpp)
+
+target_link_libraries(tpofinder_data_setup
+  hector_hazmat_detection
+)
+
 #add_executable(hog_descriptor_setup src/hog_descriptor_setup.cpp src/LinearSVM.cpp)
 
 #target_link_libraries(hog_descriptor_setup
@@ -176,11 +182,11 @@ target_link_libraries(hector_hazmat_detection_node
 #)
 
 
-#add_executable(tpofinder_test src/tpofinder_test.cpp)
+add_executable(tpofinder_test src/tpofinder_test.cpp)
 
-#target_link_libraries(tpofinder_test
-#  ${catkin_LIBRARIES}
-#)
+target_link_libraries(tpofinder_test
+  ${catkin_LIBRARIES}
+)
 
 #############
 ## Install ##

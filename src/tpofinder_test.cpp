@@ -14,6 +14,8 @@
 #include <tpofinder/provide.h>
 #include <tpofinder/visualize.h>
 
+#include <ros/ros.h>
+
 using namespace cv;
 using namespace tpofinder;
 using namespace std;
@@ -51,6 +53,8 @@ void processImage(Detector& detector, Mat &image) {
 
 int main(int argc, char* argv[]) {
 
+  ros::init(argc, argv, "tpofinder_test");
+
   cvStartWindowThread();
   namedWindow(NAME, CV_WINDOW_NORMAL | CV_WINDOW_KEEPRATIO);
 
@@ -68,25 +72,34 @@ int main(int argc, char* argv[]) {
 
   Modelbase modelbase(trainFeature);
 
-  loadModel(modelbase, "data/hazmat");
+  ros::NodeHandle nh("~");
 
-  loadModel(modelbase, "data/adapter");
-  loadModel(modelbase, "data/blokus");
-  loadModel(modelbase, "data/stockholm");
-  loadModel(modelbase, "data/taco");
-  loadModel(modelbase, "data/tea");
+  std::vector<string> models;
+  nh.getParam("models", models);
+  for(unsigned i=0; i < models.size(); i++) {
+    ROS_INFO("Loading model %s", models[i].c_str());
+    loadModel(modelbase, models[i]);
+  }
 
   Feature feature(fd, de, dm);
-
+/*
   Ptr<DetectionFilter> filter = new AndFilter(
     Ptr<DetectionFilter> (new EigenvalueFilter(-1, 4.0)),
     Ptr<DetectionFilter> (new InliersRatioFilter(0.30)));
+*/
+    Ptr<DetectionFilter> filter = new InliersRatioFilter(0.0);
 
     Detector detector(modelbase, feature, filter);
 
-    files.push_back("imgs/hazmat-test.jpg");
-    files.push_back("data/test/scene-blokus-taco-1.png");
-    files.push_back("data/test/scene-blokus-taco-2.png");
+    std::vector<string> p_files;
+    nh.getParam("files", p_files);
+
+    ROS_INFO("File size: %d", p_files.size());
+
+    for(unsigned i=0; i < p_files.size(); i++) {
+      ROS_INFO("Including test file %s", p_files[i].c_str());
+      files.push_back(p_files[i]);
+    }
 
     ImageProvider *image_provider = new ListFilenameImageProvider(files);
 
