@@ -188,6 +188,12 @@ target_link_libraries(tpofinder_test
   ${catkin_LIBRARIES}
 )
 
+add_executable(tpofinder_homographie src/tpofinder_homographie.cpp)
+
+target_link_libraries(tpofinder_homographie
+  ${catkin_LIBRARIES}
+)
+
 #############
 ## Install ##
 #############
