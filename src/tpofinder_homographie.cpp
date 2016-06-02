@@ -77,7 +77,7 @@ int main(int argc, char* argv[]) {
       ROS_INFO("homography writen to %s", homography_filename.c_str());
 
       string newimg_filename = model_path+"/"+file+".jpg";
-      imwrite(model_path+"/"+file+".jpg", imread(files[i], 0));
+      imwrite(model_path+"/"+file+".jpg", imread(files[i]));
       ROS_INFO("file saved to %s", newimg_filename.c_str());
     }
     imshow("tpofinder_homography", out);
