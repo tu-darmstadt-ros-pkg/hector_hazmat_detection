@@ -1,8 +1,16 @@
 <launch>
-  <remap from="image_percept" to="worldmodel/image_percept" />
+<remap from="image_percept" to="worldmodel/image_percept" />
 
-  <node name="hazmat_detection_test" pkg="hector_hazmat_detection" type="hector_hazmat_detection_node" output="screen">
-    <remap from="image" to="arm_rgbd_cam/rgb/image_raw" />
+<node pkg="topic_tools" type="throttle" name="arm_rgbd_cam_image_throttle" args="messages arm_rgbd_cam/rgb/image_raw 1 arm_rgbd_cam/rgb_throttled/image_raw" />
+
+<node pkg="topic_tools" type="throttle" name="arm_rgbd_cam_camera_info_throttle" args="messages arm_rgbd_cam/rgb/camera_info 1 arm_rgbd_cam/rgb_throttled/camera_info" />
+
+<node name="hazmat_detection_test" pkg="hector_hazmat_detection" type="hector_hazmat_detection_node" output="screen">
+  <remap from="image" to="arm_rgbd_cam/rgb_throttled/image_raw" />
+  <rosparam subst_value="true">
+  models:
+         - $(find hector_hazmat_detection)/data/hazmat
+  </rosparam>
   </node>
 
 </launch>

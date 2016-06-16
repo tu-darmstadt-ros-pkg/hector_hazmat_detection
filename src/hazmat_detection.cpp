@@ -59,6 +59,7 @@ hazmat_detection_impl::hazmat_detection_impl(ros::NodeHandle nh, ros::NodeHandle
 {
 
     rotation_image_size_ = 2;
+    priv_nh.getParam("rotation_enabled", rotation_enabled);
     priv_nh.getParam("rotation_source_frame", rotation_source_frame_id_);
     priv_nh.getParam("rotation_target_frame", rotation_target_frame_id_);
     priv_nh.getParam("rotation_image_size", rotation_image_size_);
@@ -122,6 +123,73 @@ void hazmat_detection_impl::loadModel(Modelbase& modelbase, const string& path) 
     modelbase.add(path);
 }
 
+void hazmat_detection_impl::rotate_image(cv_bridge::CvImageConstPtr& cv_image, const sensor_msgs::ImageConstPtr& image, const sensor_msgs::CameraInfoConstPtr& camera_info)
+{
+
+    cv::Mat rotation_matrix = cv::Mat::eye(2,3,CV_32FC1);
+    double rotation_angle = 0.0;
+
+    ROS_DEBUG("Received new image with %u x %u pixels.", image->width, image->height);
+
+    if (!rotation_target_frame_id_.empty() && listener_) {
+        tf::StampedTransform transform;
+        std::string source_frame_id_ = rotation_source_frame_id_.empty() ? image->header.frame_id : rotation_source_frame_id_;
+        try
+        {
+            listener_->waitForTransform(rotation_target_frame_id_, source_frame_id_, image->header.stamp, ros::Duration(1.0));
+            listener_->lookupTransform(rotation_target_frame_id_, source_frame_id_, image->header.stamp, transform);
+        } catch (tf::TransformException& e) {
+            ROS_ERROR("%s", e.what());
+            return;
+        }
+
+        // calculate rotation angle
+        tfScalar roll, pitch, yaw;
+        transform.getBasis().getRPY(roll, pitch, yaw);
+        rotation_angle = -roll;
+
+        // Transform the image.
+        try
+        {
+            cv::Mat in_image = cv_image->image;
+
+            // Compute the output image size.
+            int max_dim = in_image.cols > in_image.rows ? in_image.cols : in_image.rows;
+            int min_dim = in_image.cols < in_image.rows ? in_image.cols : in_image.rows;
+            int noblack_dim = min_dim / sqrt(2);
+            int diag_dim = sqrt(in_image.cols*in_image.cols + in_image.rows*in_image.rows);
+            int out_size;
+            int candidates[] = { noblack_dim, min_dim, max_dim, diag_dim, diag_dim }; // diag_dim repeated to simplify limit case.
+            int step = rotation_image_size_;
+            out_size = candidates[step] + (candidates[step + 1] - candidates[step]) * (rotation_image_size_ - step);
+            //ROS_INFO("out_size: %d", out_size);
+
+            // Compute the rotation matrix.
+            rotation_matrix = cv::getRotationMatrix2D(cv::Point2f(in_image.cols / 2.0, in_image.rows / 2.0), 180 * rotation_angle / M_PI, 1);
+            rotation_matrix.at<double>(0, 2) += (out_size - in_image.cols) / 2.0;
+            rotation_matrix.at<double>(1, 2) += (out_size - in_image.rows) / 2.0;
+
+            // Do the rotation
+            cv_bridge::CvImage *temp = new cv_bridge::CvImage(*cv_image);
+            cv::warpAffine(in_image, temp->image, rotation_matrix, cv::Size(out_size, out_size));
+            cv_image.reset(temp);
+
+            debug_provider_.addDebugImage(cv_image->image);
+
+            if (rotated_image_publisher_.getNumSubscribers() > 0) {
+                sensor_msgs::Image rotated_image;
+                cv_image->toImageMsg(rotated_image);
+                rotated_image_publisher_.publish(rotated_image, *camera_info);
+            }
+        }
+        catch (cv::Exception &e)
+        {
+            ROS_ERROR("Image processing error: %s %s %s %i", e.err.c_str(), e.func.c_str(), e.file.c_str(), e.line);
+            return;
+        }
+    }
+}
+
 void hazmat_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& image, const sensor_msgs::CameraInfoConstPtr& camera_info)
 {
     clock_t start = clock();
@@ -130,123 +198,60 @@ void hazmat_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& imag
 
     debug_provider_.addDebugImage(cv_image->image);
 
-    bool image_transform = false; //TODO as parameter
-
-    if(image_transform){
-
-        cv::Mat rotation_matrix = cv::Mat::eye(2,3,CV_32FC1);
-        double rotation_angle = 0.0;
-
-        ROS_DEBUG("Received new image with %u x %u pixels.", image->width, image->height);
-
-        if (!rotation_target_frame_id_.empty() && listener_) {
-            tf::StampedTransform transform;
-            std::string source_frame_id_ = rotation_source_frame_id_.empty() ? image->header.frame_id : rotation_source_frame_id_;
-            try
-            {
-                listener_->waitForTransform(rotation_target_frame_id_, source_frame_id_, image->header.stamp, ros::Duration(1.0));
-                listener_->lookupTransform(rotation_target_frame_id_, source_frame_id_, image->header.stamp, transform);
-            } catch (tf::TransformException& e) {
-                ROS_ERROR("%s", e.what());
-                return;
-            }
-
-            // calculate rotation angle
-            tfScalar roll, pitch, yaw;
-            transform.getBasis().getRPY(roll, pitch, yaw);
-            rotation_angle = -roll;
-
-            // Transform the image.
-            try
-            {
-                cv::Mat in_image = cv_image->image;
-
-                // Compute the output image size.
-                int max_dim = in_image.cols > in_image.rows ? in_image.cols : in_image.rows;
-                int min_dim = in_image.cols < in_image.rows ? in_image.cols : in_image.rows;
-                int noblack_dim = min_dim / sqrt(2);
-                int diag_dim = sqrt(in_image.cols*in_image.cols + in_image.rows*in_image.rows);
-                int out_size;
-                int candidates[] = { noblack_dim, min_dim, max_dim, diag_dim, diag_dim }; // diag_dim repeated to simplify limit case.
-                int step = rotation_image_size_;
-                out_size = candidates[step] + (candidates[step + 1] - candidates[step]) * (rotation_image_size_ - step);
-                //ROS_INFO("out_size: %d", out_size);
-
-                // Compute the rotation matrix.
-                rotation_matrix = cv::getRotationMatrix2D(cv::Point2f(in_image.cols / 2.0, in_image.rows / 2.0), 180 * rotation_angle / M_PI, 1);
-                rotation_matrix.at<double>(0, 2) += (out_size - in_image.cols) / 2.0;
-                rotation_matrix.at<double>(1, 2) += (out_size - in_image.rows) / 2.0;
-
-                // Do the rotation
-                cv_bridge::CvImage *temp = new cv_bridge::CvImage(*cv_image);
-                cv::warpAffine(in_image, temp->image, rotation_matrix, cv::Size(out_size, out_size));
-                cv_image.reset(temp);
-
-                debug_provider_.addDebugImage(cv_image->image);
-
-                if (rotated_image_publisher_.getNumSubscribers() > 0) {
-                    sensor_msgs::Image rotated_image;
-                    cv_image->toImageMsg(rotated_image);
-                    rotated_image_publisher_.publish(rotated_image, *camera_info);
-                }
-            }
-            catch (cv::Exception &e)
-            {
-                ROS_ERROR("Image processing error: %s %s %s %i", e.err.c_str(), e.func.c_str(), e.file.c_str(), e.line);
-                return;
-            }
-        }
+    if(rotation_enabled){
+        rotate_image(cv_image, image, camera_info);
     }
 
     vector<Detection> detections;
     int trys = 3;
 
     Mat processingImage = cv_image->image.clone();
+    Mat detectionImage = cv_image->image.clone();
 
     do{
 
-    Scene scene = detector->describe(processingImage);
+        Scene scene = detector->describe(processingImage);
 
-    Mat keypoint_image;
-    drawKeypoints(cv_image->image, scene.keypoints, keypoint_image);
+        Mat keypoint_image;
+        drawKeypoints(cv_image->image, scene.keypoints, keypoint_image);
 
-    debug_provider_.addDebugImage(keypoint_image);
+        debug_provider_.addDebugImage(keypoint_image);
 
-    detections = detector->detect(scene);
+        detections = detector->detect(scene);
 
-    Mat detectedObjects = Mat::zeros(cv_image->image.rows, cv_image->image.cols, CV_8U);
+        Mat detectedObjects = Mat::zeros(cv_image->image.rows, cv_image->image.cols, CV_8U);
 
-    ROS_INFO("Found %d objects in image", detections.size());
-    int i = 1;
-    Mat detectionImage = cv_image->image.clone();
-    BOOST_FOREACH(Detection d, detections) {
-        ROS_INFO("Object %d", i);
-        ROS_INFO("Name: %s", d.model.name.c_str());
-        drawDetection(detectionImage, d);
-        i++;
+        ROS_INFO("Found %d objects in image", detections.size());
+        int i = 1;
 
-        Mat tRoi;
-        // TODO: Is this the correct size? Need to test this with a model image
-        // smaller or larger than the scene image
-        warpPerspective(d.model.views[0].roi, tRoi, d.homography,
-                d.model.views[0].image.size());
-        //debug_provider_.addDebugImage(tRoi);
-        detectedObjects += tRoi;
+        BOOST_FOREACH(Detection d, detections) {
+            ROS_INFO("Object %d", i);
+            ROS_INFO("Name: %s", d.model.name.c_str());
+            drawDetection(detectionImage, d);
+            i++;
 
-    }
+            Mat tRoi;
+            // TODO: Is this the correct size? Need to test this with a model image
+            // smaller or larger than the scene image
+            warpPerspective(d.model.views[0].roi, tRoi, d.homography,
+                    d.model.views[0].image.size());
+            detectedObjects += tRoi;
 
-    cvtColor(detectedObjects,detectedObjects,CV_GRAY2RGB);
+        }
 
-    debug_provider_.addDebugImage(detectedObjects);
+        cvtColor(detectedObjects,detectedObjects,CV_GRAY2RGB);
 
-    processingImage = processingImage - detectedObjects;
-    debug_provider_.addDebugImage(processingImage);
+        //debug_provider_.addDebugImage(detectedObjects);
 
-    debug_provider_.addDebugImage(detectionImage);
-    trys--;
+        processingImage = processingImage - detectedObjects;
+        //debug_provider_.addDebugImage(processingImage);
+
+
+        trys--;
 
     }while(detections.size() > 0 && trys > 0);
 
+    debug_provider_.addDebugImage(detectionImage);
     debug_provider_.publishDebugImage();
     clock_t ticks = clock()-start;
     ROS_INFO("Detection time: %f", (double)ticks/CLOCKS_PER_SEC);

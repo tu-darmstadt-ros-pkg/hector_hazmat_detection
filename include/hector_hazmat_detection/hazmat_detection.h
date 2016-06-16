@@ -57,6 +57,7 @@ public:
   ~hazmat_detection_impl();
 
 protected:
+  void rotate_image(cv_bridge::CvImageConstPtr& cv_image, const sensor_msgs::ImageConstPtr& image, const sensor_msgs::CameraInfoConstPtr& camera_info);
   void imageCallback(const sensor_msgs::ImageConstPtr& image, const sensor_msgs::CameraInfoConstPtr& camera_info);
   void loadModel(Modelbase& modelbase, const string& path);
 
@@ -69,6 +70,7 @@ private:
 
   ros::Publisher percept_publisher_;
 
+  bool rotation_enabled = false;
   tf::TransformListener *listener_;
   std::string rotation_source_frame_id_;
   std::string rotation_target_frame_id_;
