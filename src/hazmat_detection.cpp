@@ -124,6 +124,7 @@ void hazmat_detection_impl::loadModel(Modelbase& modelbase, const string& path) 
 
 void hazmat_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& image, const sensor_msgs::CameraInfoConstPtr& camera_info)
 {
+    clock_t start = clock();
     cv_bridge::CvImageConstPtr cv_image;
     cv_image = cv_bridge::toCvShare(image, "bgr8");
 
@@ -198,11 +199,13 @@ void hazmat_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& imag
     }
 
     vector<Detection> detections;
-    int trys = 1;
+    int trys = 3;
+
+    Mat processingImage = cv_image->image.clone();
 
     do{
 
-    Scene scene = detector->describe(cv_image->image);
+    Scene scene = detector->describe(processingImage);
 
     Mat keypoint_image;
     drawKeypoints(cv_image->image, scene.keypoints, keypoint_image);
@@ -210,6 +213,8 @@ void hazmat_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& imag
     debug_provider_.addDebugImage(keypoint_image);
 
     detections = detector->detect(scene);
+
+    Mat detectedObjects = Mat::zeros(cv_image->image.rows, cv_image->image.cols, CV_8U);
 
     ROS_INFO("Found %d objects in image", detections.size());
     int i = 1;
@@ -225,9 +230,17 @@ void hazmat_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& imag
         // smaller or larger than the scene image
         warpPerspective(d.model.views[0].roi, tRoi, d.homography,
                 d.model.views[0].image.size());
-        debug_provider_.addDebugImage(tRoi);
+        //debug_provider_.addDebugImage(tRoi);
+        detectedObjects += tRoi;
 
     }
+
+    cvtColor(detectedObjects,detectedObjects,CV_GRAY2RGB);
+
+    debug_provider_.addDebugImage(detectedObjects);
+
+    processingImage = processingImage - detectedObjects;
+    debug_provider_.addDebugImage(processingImage);
 
     debug_provider_.addDebugImage(detectionImage);
     trys--;
@@ -235,6 +248,8 @@ void hazmat_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& imag
     }while(detections.size() > 0 && trys > 0);
 
     debug_provider_.publishDebugImage();
+    clock_t ticks = clock()-start;
+    ROS_INFO("Detection time: %f", (double)ticks/CLOCKS_PER_SEC);
 
 }
 
