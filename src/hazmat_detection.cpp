@@ -45,11 +45,47 @@
 
 #include <ros/package.h>
 
+#include <boost/filesystem.hpp>
+#include <boost/date_time.hpp>
+#include <ros/package.h>
+
 using namespace cv;
 using namespace tpofinder;
 using namespace std;
 
 namespace hector_hazmat_detection {
+
+struct RosDebugFilter : public DetectionFilter {
+
+    RosDebugFilter(const cv::Ptr<DetectionFilter> filter)
+    /*    */ : filter_(filter){
+    }
+
+    virtual bool accept(const Detection & d){
+        ROS_INFO("Filter: Inliers %d, Matches %d, Ratio: %f", d.inliers.size(), d.matches.size(), (d.inliers.size() / (double) d.matches.size()));
+        return filter_->accept(d);
+    }
+
+private:
+    cv::Ptr<DetectionFilter> filter_;
+
+};
+
+
+struct NumberInliersFilter : public DetectionFilter {
+
+    NumberInliersFilter(int threshold)
+    /*    */ : threshold_(threshold){
+    }
+
+    virtual bool accept(const Detection & d){
+        return d.inliers.size() > threshold_;
+    }
+
+private:
+    int threshold_;
+
+};
 
 hazmat_detection_impl::hazmat_detection_impl(ros::NodeHandle nh, ros::NodeHandle priv_nh)
     : nh_(nh)
@@ -58,6 +94,9 @@ hazmat_detection_impl::hazmat_detection_impl(ros::NodeHandle nh, ros::NodeHandle
     , debug_provider_(nh_)
 {
 
+    detection_output_folder_ = ros::package::getPath("hector_hazmat_detection")+"/detection_debug"; //TODO as parameter
+    perceptClassId_ = "hazmat_sign"; //TODO as parameter
+
     rotation_image_size_ = 2;
     priv_nh.getParam("rotation_enabled", rotation_enabled);
     priv_nh.getParam("rotation_source_frame", rotation_source_frame_id_);
@@ -65,6 +104,7 @@ hazmat_detection_impl::hazmat_detection_impl(ros::NodeHandle nh, ros::NodeHandle
     priv_nh.getParam("rotation_image_size", rotation_image_size_);
 
     percept_publisher_ = nh_.advertise<hector_worldmodel_msgs::ImagePercept>("image_percept", 10);
+
     hazmat_image_publisher_ = image_transport_.advertiseCamera("image/hazmat", 10);
     camera_subscriber_ = image_transport_.subscribeCamera("image", 1, &hazmat_detection_impl::imageCallback, this);
 
@@ -104,9 +144,14 @@ hazmat_detection_impl::hazmat_detection_impl(ros::NodeHandle nh, ros::NodeHandle
 
     Feature feature(fd, de, dm);
 
-    Ptr<DetectionFilter> filter = new AndFilter(
+    Ptr<DetectionFilter> filter = new RosDebugFilter(new NumberInliersFilter(15)
+           //     new AndFilter(new MagicHomographyFilter(), new NumberInliersFilter(15))
+                );
+    /*
+                new AndFilter(
                 Ptr<DetectionFilter> (new EigenvalueFilter(-1, 4.0)),
-                Ptr<DetectionFilter> (new InliersRatioFilter(0.30)));
+                Ptr<DetectionFilter> (new InliersRatioFilter(0.30))));*/
+
 
     detector = new Detector (modelbase, feature, filter);
 
@@ -116,6 +161,35 @@ hazmat_detection_impl::hazmat_detection_impl(ros::NodeHandle nh, ros::NodeHandle
 hazmat_detection_impl::~hazmat_detection_impl()
 {
     delete listener_;
+}
+
+void hazmat_detection_impl::saveDetection(const Detection& detection,const Mat& processingImage,const Mat& detectionImage){
+    boost::filesystem::path dir(detection_output_folder_);
+    std::string folder_name =boost::posix_time::to_iso_string(boost::posix_time::microsec_clock::local_time());
+
+    dir /= folder_name;
+
+    ROS_WARN("Directory: %s", dir.c_str());
+
+    if(boost::filesystem::create_directories(dir)) {
+
+        imwrite((dir / "processingImage.jpg").c_str(), processingImage);
+        imwrite((dir / "detectionImage.jpg").c_str(), detectionImage);
+
+        std::ofstream outfile((dir / "detection.txt").c_str());
+
+        if(!outfile.is_open()) {
+          ROS_ERROR("Couldn't open 'detection.txt'");
+          return;
+        }
+
+        outfile << "Inliers: " << detection.inliers.size() << std::endl;
+        outfile << "Matches: " << detection.matches.size() << std::endl;
+        outfile.close();
+    }else{
+        ROS_ERROR("Unable to create output folder");
+    }
+
 }
 
 void hazmat_detection_impl::loadModel(Modelbase& modelbase, const string& path) {
@@ -190,6 +264,10 @@ void hazmat_detection_impl::rotate_image(cv_bridge::CvImageConstPtr& cv_image, c
     }
 }
 
+ void hazmat_detection_impl::publishDetection(const Detection& detection){
+
+ }
+
 void hazmat_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& image, const sensor_msgs::CameraInfoConstPtr& camera_info)
 {
     clock_t start = clock();
@@ -209,7 +287,7 @@ void hazmat_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& imag
     Mat detectionImage = cv_image->image.clone();
 
     do{
-
+        Mat currentDetectionImage = cv_image->image.clone();
         Scene scene = detector->describe(processingImage);
 
         Mat keypoint_image;
@@ -227,22 +305,75 @@ void hazmat_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& imag
         BOOST_FOREACH(Detection d, detections) {
             ROS_INFO("Object %d", i);
             ROS_INFO("Name: %s", d.model.name.c_str());
+            ROS_DEBUG("drawing detection into overall image");
             drawDetection(detectionImage, d);
+            ROS_DEBUG("drawing detection into current image");
+            drawDetection(currentDetectionImage, d);
+            ROS_DEBUG("saving detection for debug");
+            saveDetection(d, processingImage, currentDetectionImage);
             i++;
 
+            ROS_DEBUG("Warping model for ROI");
             Mat tRoi;
             // TODO: Is this the correct size? Need to test this with a model image
             // smaller or larger than the scene image
             warpPerspective(d.model.views[0].roi, tRoi, d.homography,
                     d.model.views[0].image.size());
-            detectedObjects += tRoi;
+
+            SimpleBlobDetector::Params params;
+            params.blobColor = 255;
+
+            SimpleBlobDetector detector(params);
+
+            // Detect blobs.
+            std::vector<KeyPoint> keypoints;
+            ROS_INFO("Detecting blob");
+            Mat blob_image = tRoi.clone();
+            detector.detect( blob_image , keypoints);
+
+            KeyPoint center;
+
+            if(keypoints.size()>1){
+                ROS_WARN("Number of keypoints too large for finding detection. Should be 1");
+                center = keypoints[0];
+            }else if (keypoints.size()<1){
+                ROS_WARN("No detection found in ROI");
+                //TODO select one point
+            }else{
+                center = keypoints[0];
+            }
+
+            ROS_DEBUG("publishing image percept");
+            hector_worldmodel_msgs::ImagePercept ip;
+            ip.header= image->header;
+            ip.info.class_id = perceptClassId_;
+            ip.info.class_support = 1;
+            ip.camera_info = *camera_info;
+
+            ip.x = center.pt.x;
+            ip.y = center.pt.y;
+
+            ROS_INFO("Image percept: %d %d", ip.x, ip.y);
+
+            ip.info.class_id = d.model.name;
+
+            percept_publisher_.publish(ip);
+
+            ROS_DEBUG("Updating detected objects in current image");
+            if(detectedObjects.rows == tRoi.rows && detectedObjects.cols == tRoi.cols && detectedObjects.type() == tRoi.type()){
+                detectedObjects += tRoi;
+            }else{
+                ROS_WARN("Size missmatch for ROI. Will not add detected object");
+                ROS_WARN("objects %d %d %d", detectedObjects.rows, detectedObjects.cols, detectedObjects.type());
+                ROS_WARN("tRoi %d %d %d", tRoi.rows, tRoi.cols, tRoi.type());
+            }
 
         }
 
         cvtColor(detectedObjects,detectedObjects,CV_GRAY2RGB);
 
         //debug_provider_.addDebugImage(detectedObjects);
-
+        ROS_DEBUG("Removing detected objects from current image for rerun");
         processingImage = processingImage - detectedObjects;
         //debug_provider_.addDebugImage(processingImage);
 

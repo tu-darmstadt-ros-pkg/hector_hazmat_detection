@@ -60,7 +60,8 @@ protected:
   void rotate_image(cv_bridge::CvImageConstPtr& cv_image, const sensor_msgs::ImageConstPtr& image, const sensor_msgs::CameraInfoConstPtr& camera_info);
   void imageCallback(const sensor_msgs::ImageConstPtr& image, const sensor_msgs::CameraInfoConstPtr& camera_info);
   void loadModel(Modelbase& modelbase, const string& path);
-
+  void saveDetection(const Detection& detection, const Mat &processingImage, const Mat &detectionImage);
+  void publishDetection(const Detection& detection);
 private:
   ros::NodeHandle nh_;
   image_transport::ImageTransport image_transport_;
@@ -69,6 +70,7 @@ private:
   image_transport::CameraPublisher hazmat_image_publisher_;
 
   ros::Publisher percept_publisher_;
+  std::string perceptClassId_;
 
   bool rotation_enabled = false;
   tf::TransformListener *listener_;
@@ -78,6 +80,8 @@ private:
 
   Ptr<Detector> detector;
   CvDebugProvider debug_provider_;
+
+  std::string detection_output_folder_;
 
 };
 

@@ -1,5 +1,5 @@
 <launch>
-<remap from="image_percept" to="worldmodel/image_percept" />
+<!--<remap from="image_percept" to="worldmodel/image_percept" />-->
 
 <node pkg="topic_tools" type="throttle" name="arm_rgbd_cam_image_throttle" args="messages arm_rgbd_cam/rgb/image_raw 1 arm_rgbd_cam/rgb_throttled/image_raw" />
 
