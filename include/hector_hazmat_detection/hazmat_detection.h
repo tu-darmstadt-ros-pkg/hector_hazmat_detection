@@ -69,7 +69,8 @@ private:
   image_transport::CameraPublisher rotated_image_publisher_;
   image_transport::CameraPublisher hazmat_image_publisher_;
 
-  ros::Publisher percept_publisher_;
+  ros::Publisher worldmodel_percept_publisher_;
+  ros::Publisher aggregator_percept_publisher_;
   std::string perceptClassId_;
 
   bool rotation_enabled = false;

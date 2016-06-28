@@ -15,6 +15,7 @@ find_package(catkin REQUIRED COMPONENTS
   cv_bridge
   nodelet
   hector_worldmodel_msgs
+  hector_perception_msgs
   hector_tpofinder
   cv_debug_provider
 )
@@ -117,7 +118,7 @@ find_package( OpenCV REQUIRED )
 catkin_package(
    INCLUDE_DIRS include
 #  LIBRARIES hector_hazmat_detection
-   CATKIN_DEPENDS cv_bridge hector_worldmodel_msgs nodelet roscpp hector_tpofinder
+   CATKIN_DEPENDS cv_bridge hector_worldmodel_msgs hector_perception_msgs nodelet roscpp hector_tpofinder
 #  DEPENDS system_lib
 )
 

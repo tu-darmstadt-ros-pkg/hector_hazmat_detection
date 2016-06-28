@@ -30,6 +30,7 @@
 
 #include <hector_hazmat_detection/hazmat_detection.h>
 #include <hector_worldmodel_msgs/ImagePercept.h>
+#include <hector_perception_msgs/PerceptionDataArray.h>
 
 #include <cv.h>
 #include <cv_bridge/cv_bridge.h>
@@ -103,7 +104,9 @@ hazmat_detection_impl::hazmat_detection_impl(ros::NodeHandle nh, ros::NodeHandle
     priv_nh.getParam("rotation_target_frame", rotation_target_frame_id_);
     priv_nh.getParam("rotation_image_size", rotation_image_size_);
 
-    percept_publisher_ = nh_.advertise<hector_worldmodel_msgs::ImagePercept>("image_percept", 10);
+    worldmodel_percept_publisher_ = nh_.advertise<hector_worldmodel_msgs::ImagePercept>("image_percept", 10);
+    aggregator_percept_publisher_ = nh_.advertise<hector_perception_msgs::PerceptionDataArray>("perception/image_percept", 10);
+
 
     hazmat_image_publisher_ = image_transport_.advertiseCamera("image/hazmat", 10);
     camera_subscriber_ = image_transport_.subscribeCamera("image", 1, &hazmat_detection_impl::imageCallback, this);
@@ -286,6 +289,11 @@ void hazmat_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& imag
     Mat processingImage = cv_image->image.clone();
     Mat detectionImage = cv_image->image.clone();
 
+
+    hector_perception_msgs::PerceptionDataArray perception_array;
+    perception_array.header = image->header;
+    perception_array.perceptionType = "hazmat";
+
     do{
         Mat currentDetectionImage = cv_image->image.clone();
         Scene scene = detector->describe(processingImage);
@@ -357,7 +365,27 @@ void hazmat_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& imag
 
             ip.info.class_id = d.model.name;
 
-            percept_publisher_.publish(ip);
+            worldmodel_percept_publisher_.publish(ip);
+
+            hector_perception_msgs::PerceptionData perception_data;
+            perception_data.percept_name = perceptClassId_;
+            geometry_msgs::Polygon polygon;
+            geometry_msgs::Point32 p0,p1,p2,p3;
+            //todo add correct size
+            p0.x = center.pt.x+25;
+            p0.y = center.pt.y+25;
+            p1.x = center.pt.x+25;
+            p1.y = center.pt.y-25;
+            p2.x = center.pt.x-25;
+            p2.y = center.pt.y-25;
+            p3.x = center.pt.x-25;
+            p3.y = center.pt.y+25;
+            polygon.points.push_back(p0);
+            polygon.points.push_back(p1);
+            polygon.points.push_back(p2);
+            polygon.points.push_back(p3);
+            perception_data.polygon = polygon;
+            perception_array.perceptionList.push_back(perception_data);
 
             ROS_DEBUG("Updating detected objects in current image");
             if(detectedObjects.rows == tRoi.rows && detectedObjects.cols == tRoi.cols && detectedObjects.type() == tRoi.type()){
@@ -381,6 +409,11 @@ void hazmat_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& imag
         trys--;
 
     }while(detections.size() > 0 && trys > 0);
+
+    if (aggregator_percept_publisher_.getNumSubscribers() > 0)
+    {
+        aggregator_percept_publisher_.publish(perception_array);
+    }
 
     debug_provider_.addDebugImage(detectionImage);
     debug_provider_.publishDebugImage();
