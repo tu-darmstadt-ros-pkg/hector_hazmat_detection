@@ -109,7 +109,7 @@ hazmat_detection_impl::hazmat_detection_impl(ros::NodeHandle nh, ros::NodeHandle
 
 
     hazmat_image_publisher_ = image_transport_.advertiseCamera("image/hazmat", 10);
-    camera_subscriber_ = image_transport_.subscribeCamera("image", 1, &hazmat_detection_impl::imageCallback, this);
+    camera_subscriber_ = image_transport_.subscribeCamera("image", 50, &hazmat_detection_impl::imageCallback, this);
 
     if (!rotation_target_frame_id_.empty()) {
         listener_ = new tf::TransformListener();
