@@ -72,6 +72,18 @@ private:
 
 };
 
+struct HomographyFilter : public DetectionFilter {
+
+    HomographyFilter(){
+    }
+
+    virtual bool accept(const Detection & d){
+        double det = d.homography.at<double>(0,0)*d.homography.at<double>(1,1)-d.homography.at<double>(0,1)*d.homography.at<double>(1,0);
+        ROS_INFO("DET: %f", det);
+        return det > 0.0;
+    }
+
+};
 
 struct NumberInliersFilter : public DetectionFilter {
 
@@ -147,7 +159,7 @@ hazmat_detection_impl::hazmat_detection_impl(ros::NodeHandle nh, ros::NodeHandle
 
     Feature feature(fd, de, dm);
 
-    Ptr<DetectionFilter> filter = new RosDebugFilter(new NumberInliersFilter(15)
+    Ptr<DetectionFilter> filter = new RosDebugFilter(new AndFilter(new NumberInliersFilter(100), new HomographyFilter())
            //     new AndFilter(new MagicHomographyFilter(), new NumberInliersFilter(15))
                 );
     /*
@@ -283,11 +295,16 @@ void hazmat_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& imag
         rotate_image(cv_image, image, camera_info);
     }
 
+    cv::Mat cropped_image = cv_image->image.clone();
+
+   rectangle(cropped_image, Point(0,0), Point(640,200), Scalar( 0, 0, 0 ), -1);
+   rectangle(cropped_image, Point(360,0), Point(640,480), Scalar( 0, 0, 0 ), -1);
+
     vector<Detection> detections;
     int trys = 3;
 
-    Mat processingImage = cv_image->image.clone();
-    Mat detectionImage = cv_image->image.clone();
+    Mat processingImage = cropped_image.clone();
+    Mat detectionImage = cropped_image.clone();
 
 
     hector_perception_msgs::PerceptionDataArray perception_array;
