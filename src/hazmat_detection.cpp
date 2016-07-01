@@ -63,7 +63,7 @@ namespace hector_hazmat_detection {
   }
 
   virtual bool accept(const Detection & d){
-    ROS_INFO("Filter: Inliers %d, Matches %d, Ratio: %f", d.inliers.size(), d.matches.size(), (d.inliers.size() / (double) d.matches.size()));
+    ROS_DEBUG("Filter: Inliers %d, Matches %d, Ratio: %f", d.inliers.size(), d.matches.size(), (d.inliers.size() / (double) d.matches.size()));
     return filter_->accept(d);
   }
 
@@ -79,7 +79,7 @@ struct HomographyFilter : public DetectionFilter {
 
   virtual bool accept(const Detection & d){
     double det = d.homography.at<double>(0,0)*d.homography.at<double>(1,1)-d.homography.at<double>(0,1)*d.homography.at<double>(1,0);
-    ROS_INFO("DET: %f", det);
+    ROS_DEBUG("DET: %f", det);
     return det > 0.0;
   }
 
@@ -159,7 +159,7 @@ hazmat_detection_impl::hazmat_detection_impl(ros::NodeHandle nh, ros::NodeHandle
 
   Feature feature(fd, de, dm);
 
-  Ptr<DetectionFilter> filter = new RosDebugFilter(new AndFilter(new NumberInliersFilter(100), new HomographyFilter())
+  Ptr<DetectionFilter> filter = new RosDebugFilter(new AndFilter(new NumberInliersFilter(50), new HomographyFilter())
   //     new AndFilter(new MagicHomographyFilter(), new NumberInliersFilter(15))
 );
 /*
@@ -184,7 +184,7 @@ void hazmat_detection_impl::saveDetection(const Detection& detection,const Mat& 
 
   dir /= folder_name;
 
-  ROS_WARN("Directory: %s", dir.c_str());
+  ROS_DEBUG("Directory: %s", dir.c_str());
 
   if(boost::filesystem::create_directories(dir)) {
 
@@ -316,7 +316,7 @@ void hazmat_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& imag
       rectangle(cropped_image, Point(0,0), Point(270,480), Scalar( 0, 0, 0 ), -1); //v2
     }
 
-    debug_provider_.addDebugImage(cropped_image);
+    //debug_provider_.addDebugImage(cropped_image);
 
     vector<Detection> detections;
     int trys = 3;
@@ -344,7 +344,7 @@ void hazmat_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& imag
 
       Mat detectedObjects = Mat::zeros(cv_image->image.rows, cv_image->image.cols, CV_8U);
 
-      ROS_INFO("Found %d objects in image", detections.size());
+      ROS_DEBUG("Found %d objects in image", detections.size());
       int o_i = 1;
 
       BOOST_FOREACH(Detection d, detections) {
@@ -357,7 +357,11 @@ void hazmat_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& imag
         ROS_DEBUG("saving detection for debug");
         saveDetection(d, processingImage, currentDetectionImage);
         o_i++;
-
+/*
+        if(!detectedObjectArray.contains(model.name)){
+          detectedObjectArray.push_back(model.name);
+        }
+*/
         ROS_DEBUG("Warping model for ROI");
         Mat tRoi;
         // TODO: Is this the correct size? Need to test this with a model image
@@ -372,17 +376,17 @@ void hazmat_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& imag
 
           // Detect blobs.
           std::vector<KeyPoint> keypoints;
-          ROS_INFO("Detecting blob");
+          ROS_DEBUG("Detecting blob");
           Mat blob_image = tRoi.clone();
           detector.detect( blob_image , keypoints);
 
           KeyPoint center;
 
           if(keypoints.size()>1){
-            ROS_WARN("Number of keypoints too large for finding detection. Should be 1");
+            ROS_DEBUG("Number of keypoints too large for finding detection. Should be 1");
             center = keypoints[0];
           }else if (keypoints.size()<1){
-            ROS_WARN("No detection found in ROI");
+            ROS_DEBUG("No detection found in ROI");
             //TODO select one point
           }else{
             center = keypoints[0];
@@ -393,12 +397,14 @@ void hazmat_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& imag
           ip.header= image->header;
           ip.info.class_id = perceptClassId_;
           ip.info.class_support = 1;
+          ip.info.object_id = '1';
+          ip.info.object_support = 1;
           ip.camera_info = *camera_info;
 
           ip.x = center.pt.x;
           ip.y = center.pt.y;
 
-          ROS_INFO("Image percept: %d %d", ip.x, ip.y);
+          ROS_DEBUG("Image percept: %d %d", ip.x, ip.y);
 
           ip.info.class_id = d.model.name;
 
@@ -464,7 +470,7 @@ void hazmat_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& imag
     debug_provider_.addDebugImage(detectionImage);
     debug_provider_.publishDebugImage();
     clock_t ticks = clock()-start;
-    ROS_INFO("Detection time: %f", (double)ticks/CLOCKS_PER_SEC);
+    ROS_DEBUG("Detection time: %f", (double)ticks/CLOCKS_PER_SEC);
 
   }
 

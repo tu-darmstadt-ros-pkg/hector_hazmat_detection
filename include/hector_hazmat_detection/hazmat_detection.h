@@ -44,6 +44,7 @@
 #include <tpofinder/provide.h>
 #include <tpofinder/visualize.h>
 #include <cv_debug_provider/cv_debug_provider.h>
+#include <vector>
 
 using namespace cv;
 using namespace tpofinder;
