@@ -331,6 +331,15 @@ void hazmat_detection_impl::publishDetection(hector_perception_msgs::PerceptionD
 
   void hazmat_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& image, const sensor_msgs::CameraInfoConstPtr& camera_info)
   {
+
+    //ROS_INFO("Current time diff: %f", (image->header.stamp - ros::Time::now()).toSec());
+    //ROS_INFO("Current time diff update : %f", abs((last_perception_update-ros::Time::now()).toSec()));
+
+    if(abs((last_perception_update-ros::Time::now()).toSec()) < 5.0 && abs((image->header.stamp - ros::Time::now()).toSec()) > 2.0){
+        //ROS_INFO_THROTTLE(1,"Hazmat catch up");
+        return;
+    }
+
     clock_t start = clock();
     cv_bridge::CvImageConstPtr cv_image;
     cv_image = cv_bridge::toCvShare(image, "bgr8");
@@ -480,8 +489,6 @@ void hazmat_detection_impl::publishDetection(hector_perception_msgs::PerceptionD
 
       }while(detections.size() > 0 && trys > 0);
 
-
-
       if(detectionCount > 0){
         break;
       }
@@ -490,7 +497,7 @@ void hazmat_detection_impl::publishDetection(hector_perception_msgs::PerceptionD
 
     }
 
-    if((last_perception_update-ros::Time::now()).toSec() > 10){
+    if((last_perception_update-ros::Time::now()).toSec() > 10.0){
       perception_array.perceptionList.clear();
     }
 
