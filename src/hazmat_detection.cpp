@@ -30,7 +30,7 @@
 
 #include <hector_hazmat_detection/hazmat_detection.h>
 #include <hector_worldmodel_msgs/ImagePercept.h>
-#include <hector_perception_msgs/PerceptionDataArray.h>
+
 
 #include <cv.h>
 #include <cv_bridge/cv_bridge.h>
@@ -53,6 +53,8 @@
 using namespace cv;
 using namespace tpofinder;
 using namespace std;
+
+typedef std::vector<cv::Point> Contour;
 
 namespace hector_hazmat_detection {
 
@@ -105,6 +107,7 @@ hazmat_detection_impl::hazmat_detection_impl(ros::NodeHandle nh, ros::NodeHandle
 , image_transport_(nh_)
 , listener_(0)
 , debug_provider_(nh_)
+, last_perception_update(ros::Time::now())
 {
 
   detection_output_folder_ = ros::package::getPath("hector_hazmat_detection")+"/detection_debug"; //TODO as parameter
@@ -279,89 +282,131 @@ void hazmat_detection_impl::rotate_image(cv_bridge::CvImageConstPtr& cv_image, c
   }
 }
 
-void hazmat_detection_impl::publishDetection(const Detection& detection){
+void hazmat_detection_impl::publishDetection(hector_perception_msgs::PerceptionDataArray& perception_array, const Detection& detection){
 
-}
 
-void hazmat_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& image, const sensor_msgs::CameraInfoConstPtr& camera_info)
-{
-  clock_t start = clock();
-  cv_bridge::CvImageConstPtr cv_image;
-  cv_image = cv_bridge::toCvShare(image, "bgr8");
 
-  debug_provider_.addDebugImage(cv_image->image);
 
-  if(rotation_enabled){
-    rotate_image(cv_image, image, camera_info);
-  }
+  Mat tRoi;
+  warpPerspective(detection.model.views[0].roi, tRoi, detection.homography,
+    detection.model.views[0].image.size());
+    vector<Contour> contours;
+    vector<Vec4i> hierarchy;
+    findContours(tRoi, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE);
 
-  Mat detectionImage = cv_image->image.clone();
+    std::vector<cv::Rect> rectGroup;
 
-  for(int i = 0; i < 4; i++){
-    cv::Mat cropped_image = cv_image->image.clone();
+    hector_perception_msgs::PerceptionData perception_data;
+    perception_data.percept_name = detection.model.name;
 
-    if(i == 0){
+    geometry_msgs::Polygon polygon;
+    for(int i = 0; i < contours.size();i++){
+      vector<Point> currentContour = contours[i];
+      for(int j = 0; j < currentContour.size(); j++){
+        geometry_msgs::Point32 p;
+        p.x = currentContour[j].x;
+        p.y = currentContour[j].y;
+        polygon.points.push_back(p);
+      }
 
-      rectangle(cropped_image, Point(0,0), Point(640,190), Scalar( 0, 0, 0 ), -1); //h1
-      rectangle(cropped_image, Point(370,0), Point(640,480), Scalar( 0, 0, 0 ), -1); //v1
-
-    }else if( i == 1){
-      rectangle(cropped_image, Point(0,290), Point(640,480), Scalar( 0, 0, 0 ), -1); //h2
-      rectangle(cropped_image, Point(370,0), Point(640,480), Scalar( 0, 0, 0 ), -1); //v1
-    }else if(i == 2){
-      rectangle(cropped_image, Point(0,290), Point(640,480), Scalar( 0, 0, 0 ), -1); //h2
-      rectangle(cropped_image, Point(0,0), Point(270,480), Scalar( 0, 0, 0 ), -1); //v2
-    }else {
-      rectangle(cropped_image, Point(0,0), Point(640,190), Scalar( 0, 0, 0 ), -1); //h1
-      rectangle(cropped_image, Point(0,0), Point(270,480), Scalar( 0, 0, 0 ), -1); //v2
     }
 
-    //debug_provider_.addDebugImage(cropped_image);
+    perception_data.polygon = polygon;
 
-    vector<Detection> detections;
-    int trys = 3;
+    bool found = false;
+    for (int i = 0; i < perception_array.perceptionList.size(); i++){
+      if(perception_array.perceptionList[i].percept_name == detection.model.name){
+        perception_array.perceptionList[i] = perception_data;
+        found = true;
+        break;
+      }
+    }
 
-    int detectionCount = 0;
+    if(!found){
+      perception_array.perceptionList.push_back(perception_data);
+    }
 
-    Mat processingImage = cropped_image.clone();
+    last_perception_update = ros::Time::now();
+  }
 
+  void hazmat_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& image, const sensor_msgs::CameraInfoConstPtr& camera_info)
+  {
+    clock_t start = clock();
+    cv_bridge::CvImageConstPtr cv_image;
+    cv_image = cv_bridge::toCvShare(image, "bgr8");
 
-    hector_perception_msgs::PerceptionDataArray perception_array;
+    debug_provider_.addDebugImage(cv_image->image);
+
     perception_array.header = image->header;
     perception_array.perceptionType = "hazmat";
 
 
-    do{
-      Mat currentDetectionImage = cv_image->image.clone();
-      Scene scene = detector->describe(processingImage);
+    if(rotation_enabled){
+      rotate_image(cv_image, image, camera_info);
+    }
 
-      Mat keypoint_image;
-      drawKeypoints(cv_image->image, scene.keypoints, keypoint_image);
+    Mat detectionImage = cv_image->image.clone();
 
-    //  debug_provider_.addDebugImage(keypoint_image);
+    for(int i = 0; i < 4; i++){
+      cv::Mat cropped_image = cv_image->image.clone();
 
-      detections = detector->detect(scene);
+      if(i == 0){
 
-      Mat detectedObjects = Mat::zeros(cv_image->image.rows, cv_image->image.cols, CV_8U);
+        rectangle(cropped_image, Point(0,0), Point(640,190), Scalar( 0, 0, 0 ), -1); //h1
+        rectangle(cropped_image, Point(370,0), Point(640,480), Scalar( 0, 0, 0 ), -1); //v1
 
-      ROS_DEBUG("Found %d objects in image", detections.size());
-      int o_i = 1;
+      }else if( i == 1){
+        rectangle(cropped_image, Point(0,290), Point(640,480), Scalar( 0, 0, 0 ), -1); //h2
+        rectangle(cropped_image, Point(370,0), Point(640,480), Scalar( 0, 0, 0 ), -1); //v1
+      }else if(i == 2){
+        rectangle(cropped_image, Point(0,290), Point(640,480), Scalar( 0, 0, 0 ), -1); //h2
+        rectangle(cropped_image, Point(0,0), Point(270,480), Scalar( 0, 0, 0 ), -1); //v2
+      }else {
+        rectangle(cropped_image, Point(0,0), Point(640,190), Scalar( 0, 0, 0 ), -1); //h1
+        rectangle(cropped_image, Point(0,0), Point(270,480), Scalar( 0, 0, 0 ), -1); //v2
+      }
 
-      BOOST_FOREACH(Detection d, detections) {
-        ROS_INFO("Object %d", o_i);
-        ROS_INFO("Name: %s", d.model.name.c_str());
-        ROS_DEBUG("drawing detection into overall image");
-        drawDetection(detectionImage, d);
-        ROS_DEBUG("drawing detection into current image");
-        drawDetection(currentDetectionImage, d);
-        ROS_DEBUG("saving detection for debug");
-        saveDetection(d, processingImage, currentDetectionImage);
-        o_i++;
-/*
-        if(!detectedObjectArray.contains(model.name)){
+      //debug_provider_.addDebugImage(cropped_image);
+
+      vector<Detection> detections;
+      int trys = 3;
+
+      int detectionCount = 0;
+
+      Mat processingImage = cropped_image.clone();
+
+      do{
+        Mat currentDetectionImage = cv_image->image.clone();
+        Scene scene = detector->describe(processingImage);
+
+        Mat keypoint_image;
+        drawKeypoints(cv_image->image, scene.keypoints, keypoint_image);
+
+        //  debug_provider_.addDebugImage(keypoint_image);
+
+        detections = detector->detect(scene);
+
+        Mat detectedObjects = Mat::zeros(cv_image->image.rows, cv_image->image.cols, CV_8U);
+
+        ROS_DEBUG("Found %d objects in image", detections.size());
+        int o_i = 1;
+
+        BOOST_FOREACH(Detection d, detections) {
+          ROS_INFO("Object %d", o_i);
+          ROS_INFO("Name: %s", d.model.name.c_str());
+          ROS_DEBUG("drawing detection into overall image");
+          drawDetection(detectionImage, d);
+          ROS_DEBUG("drawing detection into current image");
+          drawDetection(currentDetectionImage, d);
+          ROS_DEBUG("saving detection for debug");
+          saveDetection(d, processingImage, currentDetectionImage);
+          o_i++;
+          publishDetection(perception_array, d);
+          /*
+          if(!detectedObjectArray.contains(model.name)){
           detectedObjectArray.push_back(model.name);
         }
-*/
+        */
         ROS_DEBUG("Warping model for ROI");
         Mat tRoi;
         // TODO: Is this the correct size? Need to test this with a model image
@@ -410,25 +455,6 @@ void hazmat_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& imag
 
           worldmodel_percept_publisher_.publish(ip);
 
-          hector_perception_msgs::PerceptionData perception_data;
-          perception_data.percept_name = perceptClassId_;
-          geometry_msgs::Polygon polygon;
-          geometry_msgs::Point32 p0,p1,p2,p3;
-          //todo add correct size
-          p0.x = center.pt.x+25;
-          p0.y = center.pt.y+25;
-          p1.x = center.pt.x+25;
-          p1.y = center.pt.y-25;
-          p2.x = center.pt.x-25;
-          p2.y = center.pt.y-25;
-          p3.x = center.pt.x-25;
-          p3.y = center.pt.y+25;
-          polygon.points.push_back(p0);
-          polygon.points.push_back(p1);
-          polygon.points.push_back(p2);
-          polygon.points.push_back(p3);
-          perception_data.polygon = polygon;
-          perception_array.perceptionList.push_back(perception_data);
 
           ROS_DEBUG("Updating detected objects in current image");
           if(detectedObjects.rows == tRoi.rows && detectedObjects.cols == tRoi.cols && detectedObjects.type() == tRoi.type()){
@@ -454,10 +480,7 @@ void hazmat_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& imag
 
       }while(detections.size() > 0 && trys > 0);
 
-      if (aggregator_percept_publisher_.getNumSubscribers() > 0)
-      {
-        aggregator_percept_publisher_.publish(perception_array);
-      }
+
 
       if(detectionCount > 0){
         break;
@@ -466,6 +489,17 @@ void hazmat_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& imag
       //TODO if found, skip rest
 
     }
+
+    if((last_perception_update-ros::Time::now()).toSec() > 10){
+      perception_array.perceptionList.clear();
+    }
+
+
+    if (aggregator_percept_publisher_.getNumSubscribers() > 0)
+    {
+      aggregator_percept_publisher_.publish(perception_array);
+    }
+
 
     debug_provider_.addDebugImage(detectionImage);
     debug_provider_.publishDebugImage();

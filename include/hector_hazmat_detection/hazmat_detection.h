@@ -46,6 +46,8 @@
 #include <cv_debug_provider/cv_debug_provider.h>
 #include <vector>
 
+#include <hector_perception_msgs/PerceptionDataArray.h>
+
 using namespace cv;
 using namespace tpofinder;
 using namespace std;
@@ -62,7 +64,7 @@ protected:
   void imageCallback(const sensor_msgs::ImageConstPtr& image, const sensor_msgs::CameraInfoConstPtr& camera_info);
   void loadModel(Modelbase& modelbase, const string& path);
   void saveDetection(const Detection& detection, const Mat &processingImage, const Mat &detectionImage);
-  void publishDetection(const Detection& detection);
+  void publishDetection(hector_perception_msgs::PerceptionDataArray& perception_array, const Detection& detection);
 private:
   ros::NodeHandle nh_;
   image_transport::ImageTransport image_transport_;
@@ -72,6 +74,7 @@ private:
 
   ros::Publisher worldmodel_percept_publisher_;
   ros::Publisher aggregator_percept_publisher_;
+
   std::string perceptClassId_;
 
   bool rotation_enabled = false;
@@ -84,6 +87,9 @@ private:
   CvDebugProvider debug_provider_;
 
   std::string detection_output_folder_;
+
+  ros::Time last_perception_update;
+  hector_perception_msgs::PerceptionDataArray perception_array;
 
 };
 
