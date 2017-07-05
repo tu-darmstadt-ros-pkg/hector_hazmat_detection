@@ -133,9 +133,9 @@ hazmat_detection_impl::hazmat_detection_impl(ros::NodeHandle nh, ros::NodeHandle
 
   ROS_INFO("Setting up tpofinder");
 
-  Ptr<FeatureDetector> fd = new OrbFeatureDetector(1000, 1.2, 8);
-  Ptr<FeatureDetector> trainFd = new OrbFeatureDetector(250, 1.2, 8);
-  Ptr<DescriptorExtractor> de = new OrbDescriptorExtractor(1000, 1.2, 8);
+  Ptr<FeatureDetector> fd = ORB::create(1000);
+  Ptr<FeatureDetector> trainFd = ORB::create(250);
+  Ptr<DescriptorExtractor> de = ORB::create(1000);
 
   Ptr<flann::IndexParams> indexParams = new flann::LshIndexParams(15, 12, 2);
   Ptr<DescriptorMatcher> dm = new FlannBasedMatcher(indexParams);
@@ -426,13 +426,13 @@ void hazmat_detection_impl::publishDetection(hector_perception_msgs::PerceptionD
           SimpleBlobDetector::Params params;
           params.blobColor = 255;
 
-          SimpleBlobDetector detector(params);
+          Ptr<SimpleBlobDetector> detector = SimpleBlobDetector::create(params);
 
           // Detect blobs.
           std::vector<KeyPoint> keypoints;
           ROS_DEBUG("Detecting blob");
           Mat blob_image = tRoi.clone();
-          detector.detect( blob_image , keypoints);
+          detector->detect( blob_image , keypoints);
 
           KeyPoint center;
 

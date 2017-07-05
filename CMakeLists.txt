@@ -117,7 +117,7 @@ find_package( OpenCV REQUIRED )
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
    INCLUDE_DIRS include
-#  LIBRARIES hector_hazmat_detection
+   LIBRARIES hector_hazmat_detection
    CATKIN_DEPENDS cv_bridge hector_worldmodel_msgs hector_perception_msgs nodelet roscpp hector_tpofinder
 #  DEPENDS system_lib
 )

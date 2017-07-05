@@ -80,9 +80,9 @@ int main(int argc, char* argv[]) {
   // TODO: remove duplication
   // TODO: support SIFT
   // TODO: make customizable
-  Ptr<FeatureDetector> fd = new OrbFeatureDetector(1000, 1.2, 8);
-  Ptr<FeatureDetector> trainFd = new OrbFeatureDetector(250, 1.2, 8);
-  Ptr<DescriptorExtractor> de = new OrbDescriptorExtractor(1000, 1.2, 8);
+  Ptr<FeatureDetector> fd = ORB::create(1000);
+  Ptr<FeatureDetector> trainFd = ORB::create(250);
+  Ptr<DescriptorExtractor> de = ORB::create(1000);
 
   Ptr<flann::IndexParams> indexParams = new flann::LshIndexParams(15, 12, 2);
   Ptr<DescriptorMatcher> dm = new FlannBasedMatcher(indexParams);
