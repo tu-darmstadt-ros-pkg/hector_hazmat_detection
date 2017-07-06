@@ -38,6 +38,7 @@
 #include <boost/format.hpp>
 #include <iostream>
 #include <opencv2/highgui/highgui.hpp>
+#include <opencv2/xfeatures2d.hpp>
 
 //#include <hector_tpofinder/configure.h>
 #include <tpofinder/detect.h>
@@ -60,7 +61,7 @@ public:
   ~hazmat_detection_impl();
 
 protected:
-  void rotate_image(cv_bridge::CvImageConstPtr& cv_image, const sensor_msgs::ImageConstPtr& image, const sensor_msgs::CameraInfoConstPtr& camera_info);
+  void rotateImage(cv_bridge::CvImageConstPtr& cv_image, const sensor_msgs::ImageConstPtr& image, const sensor_msgs::CameraInfoConstPtr& camera_info);
   void imageCallback(const sensor_msgs::ImageConstPtr& image, const sensor_msgs::CameraInfoConstPtr& camera_info);
   void loadModel(Modelbase& modelbase, const string& path);
   void saveDetection(const Detection& detection, const Mat &processingImage, const Mat &detectionImage);
@@ -77,13 +78,13 @@ private:
 
   std::string perceptClassId_;
 
-  bool rotation_enabled = false;
+  bool rotation_enabled_ = false;
   tf::TransformListener *listener_;
   std::string rotation_source_frame_id_;
   std::string rotation_target_frame_id_;
   int rotation_image_size_;
 
-  Ptr<Detector> detector;
+  Ptr<Detector> detector_;
   CvDebugProvider debug_provider_;
 
   std::string detection_output_folder_;
