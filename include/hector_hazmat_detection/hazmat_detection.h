@@ -64,7 +64,7 @@ protected:
   void rotateImage(cv_bridge::CvImageConstPtr& cv_image, const sensor_msgs::ImageConstPtr& image, const sensor_msgs::CameraInfoConstPtr& camera_info);
   void imageCallback(const sensor_msgs::ImageConstPtr& image, const sensor_msgs::CameraInfoConstPtr& camera_info);
   void loadModel(Modelbase& modelbase, const string& path);
-  void saveDetection(const Detection& detection, const Mat &processingImage, const Mat &detectionImage);
+  void saveDetection(const Detection& detection, const Mat &detectionImage);
   void publishDetection(hector_perception_msgs::PerceptionDataArray& perception_array, const Detection& detection);
 private:
   ros::NodeHandle nh_;

@@ -132,16 +132,11 @@ hazmat_detection_impl::hazmat_detection_impl(ros::NodeHandle nh, ros::NodeHandle
   }
 
   ROS_INFO("Setting up tpofinder");
-//  Ptr<FeatureDetector> feature_detector = ORB::create(1000);
-//  Ptr<FeatureDetector> train_feature_detector = ORB::create(250);
-//  Ptr<DescriptorExtractor> descriptor_extractor = ORB::create(1000);
 
   Ptr<FeatureDetector> feature_detector = cv::xfeatures2d::SIFT::create();
   Ptr<FeatureDetector> train_feature_detector = cv::xfeatures2d::SIFT::create();
   Ptr<DescriptorExtractor> descriptor_extractor = cv::xfeatures2d::SIFT::create();
 
-//  Ptr<flann::IndexParams> indexParams = new flann::LshIndexParams(15, 12, 2);
-//  Ptr<DescriptorMatcher> matcher = new FlannBasedMatcher(indexParams);
   Ptr<DescriptorMatcher> matcher = new FlannBasedMatcher();
 
   Feature train_feature(train_feature_detector, descriptor_extractor, matcher);
@@ -153,29 +148,17 @@ hazmat_detection_impl::hazmat_detection_impl(ros::NodeHandle nh, ros::NodeHandle
   priv_nh.getParam("models", models);
   for(unsigned i=0; i < models.size(); i++) {
     loadModel(modelbase, models[i]);
+    ROS_INFO_STREAM("Model path: " << models[i]);
   }
+  debug_provider_.publishDebugImage();
 
-  if(models.size() < 1){
+  if(models.empty()){
     ROS_ERROR("No models specified");
-
   }
 
-  ROS_INFO("Creating Detector");
   Feature feature(feature_detector, descriptor_extractor, matcher);
 
-//  Ptr<DetectionFilter> filter = new RosDebugFilter(new AndFilter(new NumberInliersFilter(50), new HomographyFilter())
-//  //     new AndFilter(new MagicHomographyFilter(), new NumberInliersFilter(15))
-//);
-/*
-new AndFilter(
-Ptr<DetectionFilter> (new EigenvalueFilter(-1, 4.0)),
-Ptr<DetectionFilter> (new InliersRatioFilter(0.30))));*/
-
-  Ptr<DetectionFilter> filter = new RosDebugFilter(new AndFilter(new NumberInliersFilter(20), new HomographyFilter())
-  //     new AndFilter(new MagicHomographyFilter(), new NumberInliersFilter(15))
-);
-
-
+  Ptr<DetectionFilter> filter = new NumberInliersFilter(10);
   detector_ = new Detector(modelbase, feature, filter);
 
   ROS_INFO("Successfully initialized the hazmat detector for image %s", camera_subscriber_.getTopic().c_str());
@@ -186,7 +169,7 @@ hazmat_detection_impl::~hazmat_detection_impl()
   delete listener_;
 }
 
-void hazmat_detection_impl::saveDetection(const Detection& detection,const Mat& processingImage,const Mat& detectionImage){
+void hazmat_detection_impl::saveDetection(const Detection& detection, const Mat& detectionImage) {
   boost::filesystem::path dir(detection_output_folder_);
   std::string folder_name = boost::posix_time::to_iso_string(boost::posix_time::microsec_clock::local_time());
 
@@ -195,8 +178,6 @@ void hazmat_detection_impl::saveDetection(const Detection& detection,const Mat& 
   ROS_DEBUG("Directory: %s", dir.c_str());
 
   if(boost::filesystem::create_directories(dir)) {
-
-    imwrite((dir / "processingImage.jpg").c_str(), processingImage);
     imwrite((dir / "detectionImage.jpg").c_str(), detectionImage);
 
     std::ofstream outfile((dir / "detection.txt").c_str());
@@ -212,12 +193,22 @@ void hazmat_detection_impl::saveDetection(const Detection& detection,const Mat& 
   }else{
     ROS_ERROR("Unable to create output folder");
   }
-
 }
 
 void hazmat_detection_impl::loadModel(Modelbase& modelbase, const string& path) {
-  ROS_INFO("Loading object %s", path.c_str());
   modelbase.add(path);
+  const std::vector<cv::KeyPoint>& keypoints = modelbase.models[modelbase.models.size()-1].views[0].keypoints;
+  const Mat& image = modelbase.models[modelbase.models.size()-1].views[0].image;
+  const Mat& roi = modelbase.models[modelbase.models.size()-1].views[0].roi;
+
+  Mat masked_image;
+  image.copyTo(masked_image, roi);
+  Mat keypoints_image;
+  drawKeypoints(masked_image, keypoints, keypoints_image);
+  debug_provider_.addDebugImage(masked_image);
+  debug_provider_.addDebugImage(roi);
+  debug_provider_.addDebugImage(keypoints_image);
+  ROS_INFO_STREAM("Loaded object " << path << ", Keypoints: " << keypoints.size());
 }
 
 void hazmat_detection_impl::rotateImage(cv_bridge::CvImageConstPtr& cv_image, const sensor_msgs::ImageConstPtr& image, const sensor_msgs::CameraInfoConstPtr& camera_info)
@@ -338,7 +329,7 @@ void hazmat_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& imag
     return;
   }
 
-  //    ROS_INFO_STREAM("Starting detection");
+  ROS_INFO_STREAM("Starting detection");
 
   clock_t start = clock();
   cv_bridge::CvImageConstPtr cv_image;
@@ -354,128 +345,92 @@ void hazmat_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& imag
     rotateImage(cv_image, image, camera_info);
   }
 
-  Mat detectionImage = cv_image->image.clone();
-  for(int i = 0; i < 4; i++){
-    cv::Mat cropped_image = cv_image->image.clone();
-    if(i == 0){
-      rectangle(cropped_image, Point(0,0), Point(640,190), Scalar( 0, 0, 0 ), -1); //h1
-      rectangle(cropped_image, Point(370,0), Point(640,480), Scalar( 0, 0, 0 ), -1); //v1
-    }else if( i == 1){
-      rectangle(cropped_image, Point(0,290), Point(640,480), Scalar( 0, 0, 0 ), -1); //h2
-      rectangle(cropped_image, Point(370,0), Point(640,480), Scalar( 0, 0, 0 ), -1); //v1
-    }else if(i == 2){
-      rectangle(cropped_image, Point(0,290), Point(640,480), Scalar( 0, 0, 0 ), -1); //h2
-      rectangle(cropped_image, Point(0,0), Point(270,480), Scalar( 0, 0, 0 ), -1); //v2
-    }else {
-      rectangle(cropped_image, Point(0,0), Point(640,190), Scalar( 0, 0, 0 ), -1); //h1
-      rectangle(cropped_image, Point(0,0), Point(270,480), Scalar( 0, 0, 0 ), -1); //v2
+  Mat currentDetectionImage;
+  cv::cvtColor(cv_image->image, currentDetectionImage, CV_BGR2GRAY);
+  Scene scene = detector_->describe(currentDetectionImage);
+  ROS_INFO_STREAM("Scene keypoints: " << scene.keypoints.size());
+
+  Mat keypoint_image;
+  drawKeypoints(cv_image->image, scene.keypoints, keypoint_image);
+  debug_provider_.addDebugImage(keypoint_image);
+
+  vector<Detection> detections = detector_->detect(scene);
+
+  Mat detectedObjects = Mat::zeros(cv_image->image.rows, cv_image->image.cols, CV_8U);
+
+  int o_i = 1;
+
+  if (!detections.empty()) {
+    ROS_INFO("Detections:");
+  }
+  BOOST_FOREACH(Detection d, detections) {
+    ROS_INFO_STREAM("Name: " << d.model.name.c_str() << ", Inliers: " << d.inliers.size() << "/" << d.matches.size());
+    drawDetection(currentDetectionImage, d);
+    saveDetection(d, currentDetectionImage);
+    debug_provider_.addDebugImage(currentDetectionImage);
+    o_i++;
+    publishDetection(perception_array, d);
+
+    Mat tRoi;
+    // TODO: Is this the correct size? Need to test this with a model image
+    // smaller or larger than the scene image
+    warpPerspective(d.model.views[0].roi, tRoi, d.homography, d.model.views[0].image.size());
+
+    SimpleBlobDetector::Params params;
+    params.blobColor = 255;
+    Ptr<SimpleBlobDetector> detector = SimpleBlobDetector::create(params);
+
+    // Detect blobs.
+    std::vector<KeyPoint> keypoints;
+    ROS_DEBUG("Detecting blob");
+    Mat blob_image = tRoi.clone();
+    detector->detect( blob_image , keypoints);
+
+    KeyPoint center;
+
+    if(keypoints.size()>1){
+      ROS_DEBUG("Number of keypoints too large for finding detection. Should be 1");
+      center = keypoints[0];
+    }else if (keypoints.size()<1){
+      ROS_DEBUG("No detection found in ROI");
+      //TODO select one point
+    }else{
+      center = keypoints[0];
     }
 
-    //debug_provider_.addDebugImage(cropped_image);
+    ROS_DEBUG("publishing image percept");
+    hector_worldmodel_msgs::ImagePercept ip;
+    ip.header= image->header;
+    ip.info.class_id = perceptClassId_;
+    ip.info.class_support = 1;
+    ip.info.object_id = '1';
+    ip.info.object_support = 1;
+    ip.camera_info = *camera_info;
 
-    vector<Detection> detections;
-    int trys = 3;
+    ip.x = center.pt.x;
+    ip.y = center.pt.y;
 
-    int detectionCount = 0;
+    ROS_DEBUG("Image percept: %d %d", ip.x, ip.y);
 
-    Mat processingImage = cropped_image.clone();
+    ip.info.class_id = d.model.name;
 
-    do{
-      Mat currentDetectionImage = cv_image->image.clone();
-      Scene scene = detector_->describe(processingImage);
-
-      Mat keypoint_image;
-      drawKeypoints(cv_image->image, scene.keypoints, keypoint_image);
-
-      //debug_provider_.addDebugImage(keypoint_image);
-
-      detections = detector_->detect(scene);
-
-      Mat detectedObjects = Mat::zeros(cv_image->image.rows, cv_image->image.cols, CV_8U);
-
-  //        ROS_INFO("Found %d objects in image", detections.size());
-      int o_i = 1;
-
-      BOOST_FOREACH(Detection d, detections) {
-        ROS_INFO("Object %d", o_i);
-        ROS_INFO("Name: %s", d.model.name.c_str());
-        drawDetection(detectionImage, d);
-        drawDetection(currentDetectionImage, d);
-        saveDetection(d, processingImage, currentDetectionImage);
-        debug_provider_.addDebugImage(currentDetectionImage);
-        o_i++;
-        publishDetection(perception_array, d);
-
-        Mat tRoi;
-        // TODO: Is this the correct size? Need to test this with a model image
-        // smaller or larger than the scene image
-        warpPerspective(d.model.views[0].roi, tRoi, d.homography, d.model.views[0].image.size());
-
-        SimpleBlobDetector::Params params;
-        params.blobColor = 255;
-        Ptr<SimpleBlobDetector> detector = SimpleBlobDetector::create(params);
-
-        // Detect blobs.
-        std::vector<KeyPoint> keypoints;
-        ROS_DEBUG("Detecting blob");
-        Mat blob_image = tRoi.clone();
-        detector->detect( blob_image , keypoints);
-
-        KeyPoint center;
-
-        if(keypoints.size()>1){
-          ROS_DEBUG("Number of keypoints too large for finding detection. Should be 1");
-          center = keypoints[0];
-        }else if (keypoints.size()<1){
-          ROS_DEBUG("No detection found in ROI");
-          //TODO select one point
-        }else{
-          center = keypoints[0];
-        }
-
-        ROS_DEBUG("publishing image percept");
-        hector_worldmodel_msgs::ImagePercept ip;
-        ip.header= image->header;
-        ip.info.class_id = perceptClassId_;
-        ip.info.class_support = 1;
-        ip.info.object_id = '1';
-        ip.info.object_support = 1;
-        ip.camera_info = *camera_info;
-
-        ip.x = center.pt.x;
-        ip.y = center.pt.y;
-
-        ROS_DEBUG("Image percept: %d %d", ip.x, ip.y);
-
-        ip.info.class_id = d.model.name;
-
-        worldmodel_percept_publisher_.publish(ip);
+    worldmodel_percept_publisher_.publish(ip);
 
 
-        ROS_DEBUG("Updating detected objects in current image");
-        if(detectedObjects.rows == tRoi.rows && detectedObjects.cols == tRoi.cols && detectedObjects.type() == tRoi.type()){
-          detectedObjects += tRoi;
-        }else{
-          ROS_WARN("Size missmatch for ROI. Will not add detected object");
-          ROS_WARN("objects %d %d %d", detectedObjects.rows, detectedObjects.cols, detectedObjects.type());
-          ROS_WARN("tRoi %d %d %d", tRoi.rows, tRoi.cols, tRoi.type());
-        }
-      }
-      detectionCount += detections.size();
-      cvtColor(detectedObjects,detectedObjects,CV_GRAY2RGB);
-
-      //debug_provider_.addDebugImage(detectedObjects);
-      ROS_DEBUG("Removing detected objects from current image for rerun");
-      processingImage = processingImage - detectedObjects;
-      //debug_provider_.addDebugImage(processingImage);
-
-      trys--;
-    } while(detections.size() > 0 && trys > 0);
-
-    if(detectionCount > 0){
-      break;
+    ROS_DEBUG("Updating detected objects in current image");
+    if(detectedObjects.rows == tRoi.rows && detectedObjects.cols == tRoi.cols && detectedObjects.type() == tRoi.type()){
+      detectedObjects += tRoi;
+    }else{
+      ROS_WARN("Size missmatch for ROI. Will not add detected object");
+      ROS_WARN("objects %d %d %d", detectedObjects.rows, detectedObjects.cols, detectedObjects.type());
+      ROS_WARN("tRoi %d %d %d", tRoi.rows, tRoi.cols, tRoi.type());
     }
   }
+  cvtColor(detectedObjects,detectedObjects,CV_GRAY2RGB);
+
+  //debug_provider_.addDebugImage(detectedObjects);
+  ROS_DEBUG("Removing detected objects from current image for rerun");
+  //debug_provider_.addDebugImage(processingImage);
 
   if((last_perception_update-ros::Time::now()).toSec() > 10.0) {
     perception_array.perceptionList.clear();

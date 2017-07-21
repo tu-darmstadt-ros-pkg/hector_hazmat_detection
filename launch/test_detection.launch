@@ -10,7 +10,7 @@
   <remap from="image" to="arm_rgbd_cam/rgb_throttled/image_raw" />
   <rosparam subst_value="true">
   models:
-         - $(find hector_hazmat_detection)/data/hazmat
+         - $(find hector_hazmat_detection_data)/data/hazmat_1.4S_explosives
   </rosparam>
   </node>
 
